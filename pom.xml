@@ -89,7 +89,7 @@
                                 <filter>
                                     <artifact>*:*</artifact>
                                     <includes>
-                                        <include>com/</include>
+                                        <include>net/</include>
                                         <include>META-INF/MANIFEST.MF</include>
                                         <include>META-INF/maven/net.highskiesmc/HSCore/</include>
                                         <exclude>META-INF/*.SF</exclude>
@@ -171,7 +171,7 @@
             <groupId>com.zaxxer</groupId>
             <artifactId>HikariCP</artifactId>
             <version>5.0.1</version>
-            <scope>compile</scope>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 
