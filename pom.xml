@@ -107,7 +107,7 @@
     </build>
     <distributionManagement>
         <repository>
-            <id>HSCore</id>
+            <id>github</id>
             <name>GitHub HighSkiesMC Apache Maven Packages</name>
             <url>https://maven.pkg.github.com/highskiesmc/HSCore</url>
         </repository>
