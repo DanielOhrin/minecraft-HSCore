@@ -81,8 +81,7 @@
                             <createDependencyReducedPom>true</createDependencyReducedPom>
                             <artifactSet>
                                 <includes>
-                                    <include>net.highskiesmc.hscore:*</include>
-                                    <include>com.zaxxer:HikariCP</include>
+                                    <include>net.highskiesmc:*</include>
                                 </includes>
                             </artifactSet>
                             <filters>
