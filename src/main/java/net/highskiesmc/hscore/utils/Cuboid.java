@@ -9,7 +9,9 @@ import java.util.*;
 /**
  * This class is a region/cuboid from one location to another. It can be used for blocks protection and things like WorldEdit.
  * @author desht (Original code), KingFaris10 (Editor of code)
+ * @see org.bukkit.util.BoundingBox
  */
+@Deprecated(forRemoval = true, since = "11/26/2023")
 public class Cuboid implements Iterable<Block>, Cloneable, ConfigurationSerializable {
     protected final String worldName;
     protected final int x1, y1, z1;
