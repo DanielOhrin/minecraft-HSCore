@@ -1,6 +1,7 @@
 package net.highskiesmc.hscore.utils;
 
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.entity.EntityType;
 import org.checkerframework.checker.nullness.qual.NonNull;
@@ -47,6 +48,27 @@ public class TextUtils {
         }
 
         return true;
+    }
+
+    /**
+     *
+     * @param str String to translate
+     * @param pref Color code prefix
+     * @return String with color translated by pref
+     */
+    @NonNull
+    public static String translateColor(@NonNull String str, char pref) {
+        return ChatColor.translateAlternateColorCodes(pref, str);
+    }
+
+    /**
+     *
+     * @param str String to translate
+     * @return String with color translated using '&'
+     */
+    @NonNull
+    public static String translateColor(@NonNull String str) {
+        return translateColor(str, '&');
     }
 
     // -------------------- DEPRECATED ----------------- \\
