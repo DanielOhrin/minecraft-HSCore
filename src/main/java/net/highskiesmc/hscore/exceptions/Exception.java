@@ -12,7 +12,7 @@ public class Exception {
         StringBuilder sb = new StringBuilder(ex.getMessage());
 
         for (StackTraceElement line : ex.getStackTrace()) {
-            sb.append(String.format("\n%s", line.toString()));
+            sb.append(String.format("\n          at %s", line.toString()));
         }
 
         callback.accept(sb.toString());
