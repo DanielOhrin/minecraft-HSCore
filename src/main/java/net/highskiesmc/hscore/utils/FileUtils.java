@@ -1,9 +1,15 @@
 package net.highskiesmc.hscore.utils;
 
+import org.bukkit.Bukkit;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.plugin.Plugin;
+import org.checkerframework.checker.nullness.qual.Nullable;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.logging.Level;
 
 public class FileUtils {
 
@@ -21,11 +27,26 @@ public class FileUtils {
         }
     }
 
-    public static void mkdir(File paramFile) {
+    public static void mkdir(File file) {
         try {
-            paramFile.mkdir();
+            file.mkdir();
         } catch (Exception exception) {
             exception.printStackTrace();
         }
+    }
+
+    @Nullable
+    public static File load(String fileName, Plugin plugin) {
+        File file = new File(plugin.getDataFolder(), fileName);
+        if (!file.exists()) {
+            try {
+                plugin.saveResource(fileName, false);
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "Error creating file" + fileName, e);
+                return null;
+            }
+        }
+
+        return file;
     }
 }

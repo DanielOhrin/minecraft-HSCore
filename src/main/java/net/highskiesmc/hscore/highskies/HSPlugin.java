@@ -1,27 +1,21 @@
 package net.highskiesmc.hscore.highskies;
 
-import net.highskiesmc.hscore.configuration.ConfigManager;
+import net.highskiesmc.hscore.configuration.Config;
 import net.highskiesmc.hscore.inventory.InventoryHandler;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.checkerframework.checker.nullness.qual.NonNull;
-
-import javax.annotation.Nonnull;
-import java.util.Set;
 
 public abstract class HSPlugin extends JavaPlugin {
-    protected final ConfigManager configManager;
+    protected final Config config;
 
     public HSPlugin() {
-        this.configManager = new ConfigManager(this);
+        config = new Config();
     }
 
     @Override
     public final void onEnable() {
-        loadConfigs(getConfigFileNames());
-
         if (isUsingInventories()) {
             Bukkit.getPluginManager().registerEvents(new InventoryHandler(), this);
         }
@@ -35,8 +29,7 @@ public abstract class HSPlugin extends JavaPlugin {
     }
 
     public final void onReload() {
-        this.configManager.reload("config.yml");
-        this.configManager.reload("messages.yml");
+        config.reload();
 
         reload();
     }
@@ -49,33 +42,20 @@ public abstract class HSPlugin extends JavaPlugin {
 
     protected abstract boolean isUsingInventories();
 
-    protected abstract @Nonnull Set<String> getConfigFileNames();
-
-    private void loadConfigs(@Nonnull Set<String> fileNames) {
-        fileNames.add("config.yml");
-        fileNames.add("messages.yml");
-
-        for (String file : fileNames) {
-            getConfigManager().load(file);
-            getConfigManager().save(file);
-        }
-    }
-
     @Override
-    @NonNull
+    @Deprecated(forRemoval = true)
+    /**
+     * Use static config class in
+     */
     public final FileConfiguration getConfig() {
-        return ConfigManager.get("config.yml");
-    }
-
-    public final FileConfiguration getMessages() {
-        return ConfigManager.get("messages.yml");
-    }
-
-    public final ConfigManager getConfigManager() {
-        return this.configManager;
+        return null;
     }
 
     protected void register(Listener handler) {
         Bukkit.getPluginManager().registerEvents(handler, this);
+    }
+
+    public Config getConfigs() {
+        return this.config;
     }
 }

@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Level;
 
+@Deprecated(forRemoval = true, since = "12/10/2023")
 public class ConfigManager {
 
     private static final Map<String, FileConfiguration> configs = new HashMap();
@@ -24,6 +25,7 @@ public class ConfigManager {
         return configs.containsKey(fileName);
     }
 
+    @Deprecated(forRemoval = true)
     public void load(String fileName) {
         File file = new File(this.plugin.getDataFolder(), fileName);
         if (!file.exists()) {
