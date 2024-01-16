@@ -70,6 +70,6 @@ public class XmlConfigSource extends ConfigSource {
 
     @Override
     public boolean isSet(@NonNull String path) {
-        return false;
+        return source.containsKey(path);
     }
 }
