@@ -1,5 +1,6 @@
 package net.highskiesmc.hscore.commands;
 
+import net.highskiesmc.hscore.configuration.Config;
 import net.highskiesmc.hscore.highskies.HSPlugin;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -11,12 +12,11 @@ import java.util.Map;
 
 public abstract class HSCommand implements CommandExecutor {
     protected final HSPlugin main;
-    protected final Map<CommandConfig.Type, List<CommandConfig<?>>> config;
+    protected final Config config;
     public HSCommand(HSPlugin main) {
         this.main = main;
-        this.config = createConfig();
+        this.config = main.getConfigs();
     }
-    protected abstract Map<CommandConfig.Type, List<CommandConfig<?>>> createConfig();
     protected abstract String getPermissionToReload();
 
     @Override

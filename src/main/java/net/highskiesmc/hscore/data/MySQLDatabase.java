@@ -3,9 +3,24 @@ package net.highskiesmc.hscore.data;
 import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.plugin.Plugin;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import org.w3c.dom.Document;
+import org.w3c.dom.NamedNodeMap;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.LinkedList;
+import java.util.Queue;
 
 public abstract class MySQLDatabase {
     private String host;
@@ -14,18 +29,28 @@ public abstract class MySQLDatabase {
     private String username;
     private String password;
     private HikariDataSource hikari;
+    private final Plugin main;
 
-    protected MySQLDatabase(@NonNull final ConfigurationSection DB_CONFIG) throws SQLException {
-        Bukkit.getLogger().info("Validating database configuration...");
+    protected MySQLDatabase(@NonNull Plugin main, @NonNull final ConfigurationSection DB_CONFIG) throws SQLException {
+        this.main = main;
+        main.getLogger().info("Validating database configuration...");
 
         this.validateConfig(DB_CONFIG);
 
-        Bukkit.getLogger().info("Connecting to database " + this.database + "...");
+        main.getLogger().info("Connecting to database " + this.database + "...");
 
         this.connect();
         this.tryCreateTables();
 
-        Bukkit.getLogger().info("Connected!");
+        if (useConfigXml()) {
+            try {
+                insertConfigurationTables();
+            } catch (IOException | SQLException ex) {
+                throw new SQLException(ex);
+            }
+        }
+
+        main.getLogger().info("Connected!");
     }
 
     /**
@@ -110,6 +135,108 @@ public abstract class MySQLDatabase {
     public void disconnect() {
         if (isConnected()) {
             this.hikari.close();
+        }
+    }
+
+    /**
+     * @return Whether to insert values from config.xml automatically
+     */
+    protected abstract boolean useConfigXml();
+
+    /**
+     * Inserts config values from resource `config.xml` into the database
+     */
+    private void insertConfigurationTables() throws IOException, SQLException {
+        try (Connection conn = getHikari().getConnection()) {
+            Queue<PreparedStatement> statements = new LinkedList<>();
+            // TODO: Extract to HSCore
+            try (InputStream stream = main.getClass().getResourceAsStream("/config.xml")) {
+                DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+                Document doc = builder.parse(stream);
+                doc.getDocumentElement().normalize();
+
+                NodeList tables = doc.getElementsByTagName("table"); // We know these are all Element Nodes
+                for (int i = 0; i < tables.getLength(); i++) {
+                    Node table = tables.item(i);
+
+                    // Process table
+                    NamedNodeMap attributes = table.getAttributes();
+                    String tableName = attributes.getNamedItem("name").getNodeValue();
+
+                    // CREATE PREPARED STATEMENT
+                    StringBuilder sb = new StringBuilder("INSERT INTO ");
+                    sb.append(tableName);
+                    sb.append(" (");
+
+                    // Get First Row
+                    NodeList rows = table.getChildNodes();
+                    Node row = null;
+                    for (int j = 0; j < rows.getLength(); j++) {
+                        row = rows.item(j);
+
+                        if (row.getNodeType() == Node.ELEMENT_NODE) {
+                            break;
+                        }
+                    }
+
+                    // Process Columns in row
+                    NodeList columns = row.getChildNodes();
+                    int values = 0;
+                    for (int j = 0; j < columns.getLength(); j++) {
+                        Node column = columns.item(j);
+
+                        if (column.getNodeType() == Node.ELEMENT_NODE) {
+                            sb.append(column.getNodeName());
+                            sb.append(", ");
+                            values++;
+                        }
+                    }
+                    sb.setCharAt(sb.lastIndexOf(","), ')');
+                    sb.append("VALUES (");
+                    sb.append("?, ".repeat(values - 1));
+                    sb.append("?);");
+
+                    PreparedStatement batch = conn.prepareStatement(sb.toString());
+                    // END OF PREPARED STATEMENT
+
+                    // BEGIN BATCH INSERT
+                    for (int j = 0; j < rows.getLength(); j++) {
+                        int missingValues = values;
+                        row = rows.item(j);
+                        if (row.getNodeType() == Node.ELEMENT_NODE) {
+                            columns = row.getChildNodes();
+                            for (int k = 0; k < columns.getLength() && missingValues > 0; k++) {
+                                Node column = columns.item(k);
+
+                                if (column.getNodeType() == Node.ELEMENT_NODE) {
+                                    String value = column.getTextContent();
+                                    switch (value) {
+                                        case "False", "false" -> batch.setBoolean(values - missingValues + 1, false);
+                                        case "True", "true" -> batch.setBoolean(values - missingValues + 1, true);
+                                        default -> batch.setObject(values - missingValues + 1, value);
+                                    }
+
+                                    missingValues--;
+                                }
+                            }
+                        } else {
+                            continue;
+                        }
+
+                        batch.addBatch();
+                    }
+                    // END BATCH INSERT
+
+                    statements.add(batch);
+                }
+            } catch (ParserConfigurationException | SAXException ex) {
+                throw new IOException();
+            }
+
+            while (statements.peek() != null) {
+                PreparedStatement statement = statements.poll();
+                statement.executeBatch();
+            }
         }
     }
 }
