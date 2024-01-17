@@ -54,7 +54,7 @@ public class XmlConfigSource extends ConfigSource {
                 node = values.item(i);
 
                 String key = node.getAttributes().getNamedItem("key").getNodeValue();
-                String value = source.put(key, node.getTextContent());
+                String value = node.getTextContent();
 
                 source.put(key, value);
 
