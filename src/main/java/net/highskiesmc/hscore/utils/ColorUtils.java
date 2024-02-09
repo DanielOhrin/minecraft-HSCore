@@ -7,9 +7,11 @@ import org.bukkit.DyeColor;
 import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 public class ColorUtils {
     private static final Map<String, Color> COLOR_NAMES = new HashMap<>();
+    private static final Pattern CHAT_COLOR_PATTERN = Pattern.compile("(?i)&[0-9A-FK-OR]");
 
     static {
         COLOR_NAMES.put("WHITE", Color.WHITE);
@@ -64,5 +66,9 @@ public class ColorUtils {
 
     public static Color getFireworkColor(String paramString) {
         return getDyeColor(paramString).getFireworkColor();
+    }
+
+    public static String removeChatColors(String input) {
+        return CHAT_COLOR_PATTERN.matcher(input).replaceAll("");
     }
 }
