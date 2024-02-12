@@ -10,7 +10,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Level;
 
-@Deprecated(forRemoval = true, since = "12/10/2023")
 public class ConfigManager {
 
     private static final Map<String, FileConfiguration> configs = new HashMap();
