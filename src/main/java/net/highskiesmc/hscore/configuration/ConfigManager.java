@@ -24,7 +24,6 @@ public class ConfigManager {
         return configs.containsKey(fileName);
     }
 
-    @Deprecated(forRemoval = true)
     public void load(String fileName) {
         File file = new File(this.plugin.getDataFolder(), fileName);
         if (!file.exists()) {
