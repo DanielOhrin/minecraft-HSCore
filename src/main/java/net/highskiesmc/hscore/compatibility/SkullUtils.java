@@ -1,9 +1,9 @@
 package net.highskiesmc.hscore.compatibility;
 
 import com.google.common.collect.Lists;
-import net.highskiesmc.hscore.utils.nms.ReflectionUtils;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
+import net.highskiesmc.hscore.utils.nms.ReflectionUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.block.Block;
@@ -17,11 +17,12 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.Base64;
-import java.util.Objects;
-import java.util.UUID;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 /**
@@ -36,16 +37,24 @@ import java.util.regex.Pattern;
  * <p>
  * The basic premise behind this API is that the final skull data is contained in a {@link GameProfile}
  * either by ID, name or encoded textures URL property.
+ * <p>
+ * Different versions of Minecraft client handle this differently. In newer versions the client seem
+ * to prioritize the texture property over the set UUID and name, in older versions however using the
+ * same UUID for all GameProfiles caused all skulls (that use base64) to look the same.
+ * The client is responsible for caching skull textures. If the download were to fail (either because of
+ * connection issues or invalid values) the client will cache that skull UUID and the skull
+ * will remain as a steve head until the client is completely restarted.
+ * I don't know if this cache system works across other servers or is just specific to one server.
  *
  * @author Crypto Morin
- * @version 4.0.0
+ * @version 6.0.1
  * @see XMaterial
  * @see ReflectionUtils
  */
-public class SkullUtils {
-    public static final MethodHandle
+public final class SkullUtils {
+    protected static final MethodHandle
             CRAFT_META_SKULL_PROFILE_GETTER, CRAFT_META_SKULL_PROFILE_SETTER,
-            CRAFT_META_SKULL_BLOCK_SETTER;
+            CRAFT_META_SKULL_BLOCK_SETTER, PROPERTY_GETVALUE;
 
     /**
      * Some people use this without quotes surrounding the keys, not sure what that'd work.
@@ -57,14 +66,38 @@ public class SkullUtils {
      * We'll just return an x shaped hardcoded skull.
      * https://minecraft-heads.com/custom-heads/miscellaneous/58141-cross
      */
-    private static final String INVALID_BASE64 =
+    private static final String INVALID_SKULL_VALUE =
             "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYzEwNTkxZTY5MDllNmEyODFiMzcxODM2ZTQ2MmQ2N2EyYzc4ZmEwOTUyZTkxMGYzMmI0MWEyNmM0OGMxNzU3YyJ9fX0=";
 
     /**
      * They don't seem to use anything complicated, but the length is inconsistent for some reasons.
      * It doesn't seem like uppercase characters are used either.
      */
-    private static final Pattern MOJANG_SHA256_APPROX = Pattern.compile("[0-9a-z]{60,70}");
+    private static final Pattern MOJANG_SHA256_APPROX = Pattern.compile("[0-9a-z]{55,70}");
+
+    private static final AtomicLong MOJANG_SHA_FAKE_ID_ENUMERATOR = new AtomicLong(1);
+
+    /**
+     * The ID and name of the GameProfiles are immutable, so we're good to cache them.
+     * The key is the SHA value.
+     */
+    private static final Map<String, GameProfile> MOJANG_SHA_FAKE_PROFILES = new HashMap<>();
+    private static final Map<String, GameProfile> NULL_PLAYERS = new HashMap<>();
+
+    /**
+     * In v1.20.2 there were some changes to the mojang API.
+     * Before that version both UUID and name fields couldn't be null, only one of them.
+     * It gave the error: {@code Name and ID cannot both be blank}
+     * Here, "blank" is null for UUID, and {@code Character.isWhitespace} for the name field.
+     */
+    private static final boolean NULLABILITY_RECORD_UPDATE = ReflectionUtils.supports(20, 2);
+    private static final UUID IDENTITY_UUID = new UUID(0, 0);
+    private static final GameProfile NULL_PROFILE = new GameProfile(IDENTITY_UUID, "");
+    /**
+     * Does using a random UUID have any advantage?
+     */
+    private static final UUID GAME_PROFILE_EMPTY_UUID = NULLABILITY_RECORD_UPDATE ? IDENTITY_UUID : null;
+    private static final String GAME_PROFILE_EMPTY_NAME = NULLABILITY_RECORD_UPDATE ? "" : null;
 
     /**
      * The value after this URL is probably an SHA-252 value that Mojang uses to unique identify player skins.
@@ -76,7 +109,7 @@ public class SkullUtils {
 
     static {
         MethodHandles.Lookup lookup = MethodHandles.lookup();
-        MethodHandle profileSetter = null, profileGetter = null, blockSetter = null;
+        MethodHandle profileSetter = null, profileGetter = null, blockSetter = null, propGetval = null;
 
         try {
             Class<?> CraftMetaSkull = ReflectionUtils.getCraftClass("inventory.CraftMetaSkull");
@@ -92,7 +125,7 @@ public class SkullUtils {
             } catch (NoSuchMethodException e) {
                 profileSetter = lookup.unreflectSetter(profile);
             }
-        } catch (NoSuchFieldException | IllegalAccessException e) {
+        } catch (Throwable e) {
             e.printStackTrace();
         }
 
@@ -106,6 +139,16 @@ public class SkullUtils {
             e.printStackTrace();
         }
 
+        if (!ReflectionUtils.supports(20, 2)) {
+            try {
+                //noinspection JavaLangInvokeHandleSignature
+                propGetval = lookup.findVirtual(Property.class, "getValue", MethodType.methodType(String.class));
+            } catch (Throwable ex) {
+                ex.printStackTrace();
+            }
+        }
+
+        PROPERTY_GETVALUE = propGetval;
         CRAFT_META_SKULL_PROFILE_SETTER = profileSetter;
         CRAFT_META_SKULL_PROFILE_GETTER = profileGetter;
         CRAFT_META_SKULL_BLOCK_SETTER = blockSetter;
@@ -117,8 +160,9 @@ public class SkullUtils {
         ItemStack head = XMaterial.PLAYER_HEAD.parseItem();
         SkullMeta meta = (SkullMeta) head.getItemMeta();
 
-        if (SUPPORTS_UUID) meta.setOwningPlayer(Bukkit.getOfflinePlayer(id));
-        else meta.setOwner(Bukkit.getOfflinePlayer(id).getName());
+        OfflinePlayer player = Bukkit.getOfflinePlayer(id);
+        if (SUPPORTS_UUID) meta.setOwningPlayer(player);
+        else meta.setOwner(player.getName());
 
         head.setItemMeta(meta);
         return head;
@@ -142,41 +186,80 @@ public class SkullUtils {
     }
 
     @SuppressWarnings("deprecation")
+    private static SkullMeta applySkinFromName(SkullMeta head, String name) {
+        GameProfile nullPlayer = NULL_PLAYERS.get(name);
+        if (nullPlayer == NULL_PROFILE) {
+            // There's no point in changing anything.
+            return head;
+        } else {
+            // CraftServer#getOfflinePlayer() trick
+            OfflinePlayer player = Bukkit.getOfflinePlayer(name);
+            UUID nullUUID = UUID.nameUUIDFromBytes(("OfflinePlayer:" + name).getBytes(StandardCharsets.UTF_8));
+
+            if (player.getUniqueId().equals(nullUUID)) {
+                NULL_PLAYERS.put(name, NULL_PROFILE);
+                return head;
+            } else {
+                return applySkin(head, player);
+            }
+        }
+    }
+
+    /**
+     * @param identifier Can be a player name, player UUID, Base64, or a minecraft.net skin link.
+     */
     @Nonnull
     public static SkullMeta applySkin(@Nonnull ItemMeta head, @Nonnull String identifier) {
         SkullMeta meta = (SkullMeta) head;
         // @formatter:off
-        switch (detectSkullValueType(identifier)) {
-            case UUID: return applySkin(head, Bukkit.getOfflinePlayer(UUID.fromString(identifier)));
-            case NAME: return applySkin(head, Bukkit.getOfflinePlayer(identifier));
-            case BASE64:       return setSkullBase64(meta, identifier);
-            case TEXTURE_URL:  return setSkullBase64(meta, encodeTexturesURL(identifier));
-            case TEXTURE_HASH: return setSkullBase64(meta, encodeTexturesURL(TEXTURES + identifier));
-            case UNKNOWN:      return setSkullBase64(meta, INVALID_BASE64);
+        StringSkullCache result = detectSkullValueType(identifier);
+        switch (result.valueType) {
+            case UUID: return applySkin(meta, Bukkit.getOfflinePlayer((UUID) result.object));
+            case NAME: return applySkinFromName(meta, identifier);
+            case BASE64:       return setSkullBase64(meta, identifier,                               extractMojangSHAFromBase64((String) result.object));
+            case TEXTURE_URL:  return setSkullBase64(meta, encodeTexturesURL(identifier),            extractMojangSHAFromBase64(identifier));
+            case TEXTURE_HASH: return setSkullBase64(meta, encodeTexturesURL(TEXTURES + identifier), identifier);
+            case UNKNOWN:      return setSkullBase64(meta, INVALID_SKULL_VALUE,                           INVALID_SKULL_VALUE);
             default: throw new AssertionError("Unknown skull value");
         }
         // @formatter:on
     }
 
     @Nonnull
-    public static SkullMeta setSkullBase64(@Nonnull SkullMeta head, @Nonnull String value) {
+    public static SkullMeta setSkullBase64(@Nonnull SkullMeta head, @Nonnull String value, String MojangSHA) {
         if (value == null || value.isEmpty()) throw new IllegalArgumentException("Skull value cannot be null or empty");
-        GameProfile profile = profileFromBase64(value);
+        GameProfile profile = profileFromBase64(value, MojangSHA);
+        setProfile(head, profile);
+        return head;
+    }
 
+    /**
+     * Setting the profile directly is not compatible with {@link SkullMeta#setOwningPlayer(OfflinePlayer)}
+     * and should be reset with {@code setProfile(head, null)} before anything.
+     * <p>
+     * It seems like the Profile is prioritized over UUID/name.
+     */
+    public static void setProfile(SkullMeta head, GameProfile profile) {
         try {
             CRAFT_META_SKULL_PROFILE_SETTER.invoke(head, profile);
         } catch (Throwable ex) {
             ex.printStackTrace();
         }
-
-        return head;
     }
 
     @Nonnull
-    public static GameProfile profileFromBase64(String value) {
-        GameProfile profile = new GameProfile(UUID.randomUUID(), null);
-        profile.getProperties().put("textures", new Property("textures", value));
-        return profile;
+    public static GameProfile profileFromBase64(String base64, String MojangSHA) {
+        // Use an empty string instead of null for the name parameter because it's now null-checked since 1.20.2.
+        // It doesn't seem to affect functionality.
+        GameProfile gp = MOJANG_SHA_FAKE_PROFILES.get(MojangSHA);
+        if (gp != null) return gp;
+
+        gp = new GameProfile(
+                NULLABILITY_RECORD_UPDATE ? GAME_PROFILE_EMPTY_UUID : new UUID(MOJANG_SHA_FAKE_ID_ENUMERATOR.getAndIncrement(), 0), // UUID.randomUUID()
+                GAME_PROFILE_EMPTY_NAME);
+        gp.getProperties().put("textures", new Property("textures", base64));
+        MOJANG_SHA_FAKE_PROFILES.put(MojangSHA, gp);
+        return gp;
     }
 
     @Nonnull
@@ -187,33 +270,38 @@ public class SkullUtils {
     @Nonnull
     public static GameProfile detectProfileFromString(String identifier) {
         // @formatter:off sometimes programming is just art that a machine can't understand :)
-        switch (detectSkullValueType(identifier)) {
-            case UUID:         return new GameProfile(UUID.fromString(               identifier), null);
-            case NAME:         return new GameProfile(null,                          identifier);
-            case BASE64:       return profileFromBase64(                             identifier);
-            case TEXTURE_URL:  return profileFromBase64(encodeTexturesURL(           identifier));
-            case TEXTURE_HASH: return profileFromBase64(encodeTexturesURL(TEXTURES + identifier));
-            case UNKNOWN:      return profileFromBase64(INVALID_BASE64); // This can't be cached because the caller might change it.
+        StringSkullCache result = detectSkullValueType(identifier);
+        switch (result.valueType) {
+            case UUID:         return new GameProfile((UUID) result.object,          GAME_PROFILE_EMPTY_NAME);
+            case NAME:         return new GameProfile(GAME_PROFILE_EMPTY_UUID,       identifier);
+            case BASE64:       return profileFromBase64(                             identifier,  extractMojangSHAFromBase64((String) result.object));
+            case TEXTURE_URL:  return profileFromBase64(encodeTexturesURL(           identifier), extractMojangSHAFromBase64(identifier));
+            case TEXTURE_HASH: return profileFromBase64(encodeTexturesURL(TEXTURES + identifier), identifier);
+            case UNKNOWN:      return profileFromBase64(INVALID_SKULL_VALUE,                           INVALID_SKULL_VALUE); // This can't be cached because the caller might change it.
             default: throw new AssertionError("Unknown skull value");
         }
         // @formatter:on
     }
 
-    public static ValueType detectSkullValueType(String identifier) {
+    @Nonnull
+    public static StringSkullCache detectSkullValueType(@Nonnull String identifier) {
         try {
-            UUID.fromString(identifier);
-            return ValueType.UUID;
+            UUID id = UUID.fromString(identifier);
+            return new StringSkullCache(ValueType.UUID, id);
         } catch (IllegalArgumentException ignored) {
         }
 
-        if (isUsername(identifier)) return ValueType.NAME;
-        if (identifier.contains("textures.minecraft.net")) return ValueType.TEXTURE_URL;
-        if (identifier.length() > 100 && isBase64(identifier)) return ValueType.BASE64;
+        if (isUsername(identifier)) return new StringSkullCache(ValueType.NAME);
+        if (identifier.contains("textures.minecraft.net")) return new StringSkullCache(ValueType.TEXTURE_URL);
+        if (identifier.length() > 100) {
+            String decoded = decodeBase64(identifier);
+            if (decoded != null) return new StringSkullCache(ValueType.BASE64, decoded);
+        }
 
         // We'll just "assume" that it's a textures.minecraft.net hash without the URL part.
-        if (MOJANG_SHA256_APPROX.matcher(identifier).matches()) return ValueType.TEXTURE_HASH;
+        if (MOJANG_SHA256_APPROX.matcher(identifier).matches()) return new StringSkullCache(ValueType.TEXTURE_HASH);
 
-        return ValueType.UNKNOWN;
+        return new StringSkullCache(ValueType.UNKNOWN);
     }
 
     public static void setSkin(@Nonnull Block block, @Nonnull String value) {
@@ -240,19 +328,19 @@ public class SkullUtils {
 
     @Nonnull
     private static String encodeBase64(@Nonnull String str) {
-        return Base64.getEncoder().encodeToString(str.getBytes());
+        return Base64.getEncoder().encodeToString(str.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
      * While RegEx is a little faster for small strings, this always checks strings with a length
      * greater than 100, so it'll perform a lot better.
      */
-    private static boolean isBase64(@Nonnull String base64) {
+    private static String decodeBase64(@Nonnull String base64) {
         try {
-            Base64.getDecoder().decode(base64);
-            return true;
+            byte[] bytes = Base64.getDecoder().decode(base64);
+            return new String(bytes, StandardCharsets.UTF_8);
         } catch (IllegalArgumentException ignored) {
-            return false;
+            return null;
         }
         //return BASE64.matcher(base64).matches();
     }
@@ -271,11 +359,59 @@ public class SkullUtils {
 
         if (profile != null && !profile.getProperties().get("textures").isEmpty()) {
             for (Property property : profile.getProperties().get("textures")) {
-                if (!property.getValue().isEmpty()) return property.getValue();
+                String value = getPropertyValue(property);
+                if (!value.isEmpty()) return value;
             }
         }
 
         return null;
+    }
+
+    /**
+     * They changed {@link Property} to a Java record in 1.20.2
+     *
+     * @since 4.0.1
+     */
+    private static String getPropertyValue(Property property) {
+        if (NULLABILITY_RECORD_UPDATE) {
+            return property.getValue();
+        } else {
+            try {
+                return (String) PROPERTY_GETVALUE.invoke(property);
+            } catch (Throwable e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    private static String extractMojangSHAFromBase64(String decodedBase64) {
+        // Example: {"textures":{"SKIN":{"url":"http://textures.minecraft.net/texture/74133f6ac3be2e2499a784efadcfffeb9ace025c3646ada67f3414e5ef3394"}}}
+        int startIndex = decodedBase64.lastIndexOf('/');
+        int endIndex = decodedBase64.lastIndexOf('"');
+
+        if (startIndex == -1 || endIndex == -1 || startIndex >= endIndex) {
+            throw new IllegalArgumentException("Invalid Base64 skull value: " + decodedBase64);
+        }
+
+        try {
+            return decodedBase64.substring(startIndex + 1, endIndex);
+        } catch (IndexOutOfBoundsException ex) {
+            throw new IllegalArgumentException("Invalid Base64 skull value: " + decodedBase64, ex);
+        }
+    }
+
+    private static final class StringSkullCache {
+        private final ValueType valueType;
+        private final Object object;
+
+        private StringSkullCache(ValueType valueType) {
+            this(valueType, null);
+        }
+
+        private StringSkullCache(ValueType valueType, Object object) {
+            this.valueType = valueType;
+            this.object = object;
+        }
     }
 
     /**

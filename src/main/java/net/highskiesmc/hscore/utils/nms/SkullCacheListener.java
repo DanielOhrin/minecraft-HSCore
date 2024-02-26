@@ -27,16 +27,17 @@ import java.util.UUID;
  * This class is currently unused until I find a solution.
  */
 @SuppressWarnings("unused")
+@Deprecated(forRemoval = true, since = "02/25/2024")
 final class SkullCacheListener {
     protected static final Map<UUID, String> CACHE = new HashMap<>();
     private static final String SESSION = "https://sessionserver.mojang.com/session/minecraft/profile/";
 
-    @Nonnull
-    public static SkullMeta applyCachedSkin(@Nonnull ItemMeta head, @Nonnull UUID identifier) {
-        String base64 = SkullCacheListener.CACHE.get(identifier);
-        SkullMeta meta = (SkullMeta) head;
-        return SkullUtils.setSkullBase64(meta, base64);
-    }
+//    @Nonnull
+//    public static SkullMeta applyCachedSkin(@Nonnull ItemMeta head, @Nonnull UUID identifier) {
+//        String base64 = SkullCacheListener.CACHE.get(identifier);
+//        SkullMeta meta = (SkullMeta) head;
+//        return SkullUtils.setSkullBase64(meta, base64);
+//    }
 
     /**
      * https://api.mojang.com/users/profiles/minecraft/Username gives the ID
@@ -113,22 +114,23 @@ final class SkullCacheListener {
         return true;
     }
 
-    @EventHandler
-    public void onPlayerJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        GameProfile profile = new GameProfile(player.getUniqueId(), player.getName());
-        ItemStack head = XMaterial.PLAYER_HEAD.parseItem();
-        SkullMeta meta = (SkullMeta) head.getItemMeta();
-        try {
-            SkullUtils.CRAFT_META_SKULL_PROFILE_SETTER.invoke(meta, profile);
-        } catch (Throwable ex) {
-            ex.printStackTrace();
-        }
-        head.setItemMeta(meta);
-
-        // If you don't add it to the players inventory, it won't be cached. That's the problem.
-        // Or is the inventory cached? I tested this with multiple inventories and other inventories load immediately after an inventory with
-        // the skull in it is opened once.
-        player.getInventory().addItem(head);
-    }
+//
+//    @EventHandler
+//    public void onPlayerJoin(PlayerJoinEvent event) {
+//        Player player = event.getPlayer();
+//        GameProfile profile = new GameProfile(player.getUniqueId(), player.getName());
+//        ItemStack head = XMaterial.PLAYER_HEAD.parseItem();
+//        SkullMeta meta = (SkullMeta) head.getItemMeta();
+//        try {
+//            SkullUtils.CRAFT_META_SKULL_PROFILE_SETTER.invoke(meta, profile);
+//        } catch (Throwable ex) {
+//            ex.printStackTrace();
+//        }
+//        head.setItemMeta(meta);
+//
+//        // If you don't add it to the players inventory, it won't be cached. That's the problem.
+//        // Or is the inventory cached? I tested this with multiple inventories and other inventories load immediately after an inventory with
+//        // the skull in it is opened once.
+//        player.getInventory().addItem(head);
+//    }
 }

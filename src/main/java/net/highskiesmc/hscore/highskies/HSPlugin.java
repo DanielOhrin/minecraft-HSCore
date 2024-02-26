@@ -42,15 +42,6 @@ public abstract class HSPlugin extends JavaPlugin {
 
     protected abstract boolean isUsingInventories();
 
-    @Override
-    @Deprecated(forRemoval = true)
-    /**
-     * Use static config class in
-     */
-    public final FileConfiguration getConfig() {
-        return null;
-    }
-
     protected void register(Listener handler) {
         Bukkit.getPluginManager().registerEvents(handler, this);
     }

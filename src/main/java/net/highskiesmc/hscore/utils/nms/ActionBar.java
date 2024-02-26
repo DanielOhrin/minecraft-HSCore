@@ -16,8 +16,6 @@ import java.lang.invoke.MethodType;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 
-import static net.highskiesmc.hscore.utils.nms.ReflectionUtils.*;
-
 /**
  * A reflection API for action bars in Minecraft.
  * Fully optimized - Supports 1.8.8+ and above.
@@ -25,7 +23,7 @@ import static net.highskiesmc.hscore.utils.nms.ReflectionUtils.*;
  * Messages are not colorized by default.
  * <p>
  * Action bars are text messages that appear above
- * the player's <a href="https://minecraft.gamepedia.com/Heads-up_display">hotbar</a>
+ * the player's <a href="https://minecraft.wiki/w/Heads-up_display">hotbar</a>
  * Note that this is different from the text appeared when switching between items.
  * Those messages show the item's name and are different from action bars.
  * The only natural way of displaying action bars is when mounting.
@@ -72,9 +70,9 @@ public final class ActionBar {
         if (!USE_SPIGOT_API) {
             // Supporting 1.12+ is not necessary, the package guards are just for readability.
             MethodHandles.Lookup lookup = MethodHandles.lookup();
-            Class<?> packetPlayOutChatClass = getNMSClass("network.protocol.game", "PacketPlayOutChat");
-            Class<?> iChatBaseComponentClass = getNMSClass("network.chat", "IChatBaseComponent");
-            Class<?> ChatSerializerClass = getNMSClass("network.chat", "IChatBaseComponent$ChatSerializer");
+            Class<?> packetPlayOutChatClass = ReflectionUtils.getNMSClass("network.protocol.game", "PacketPlayOutChat");
+            Class<?> iChatBaseComponentClass = ReflectionUtils.getNMSClass("network.chat", "IChatBaseComponent");
+            Class<?> ChatSerializerClass = ReflectionUtils.getNMSClass("network.chat", "IChatBaseComponent$ChatSerializer");
 
             try {
                 // JSON Message Builder
@@ -83,7 +81,7 @@ public final class ActionBar {
 
                 // Game Info Message Type
                 Class<?> chatMessageTypeClass = Class.forName(
-                        NMS_PACKAGE + v(17, "network.chat").orElse("") + "ChatMessageType"
+                        ReflectionUtils.NMS_PACKAGE + ReflectionUtils.v(17, "network.chat").orElse("") + "ChatMessageType"
                 );
 
                 // Packet Constructor
@@ -176,7 +174,7 @@ public final class ActionBar {
             // We need to escape both \ and " to avoid all possiblities of breaking JSON syntax and causing an exception.
             Object component = CHAT_COMPONENT_TEXT.invoke("{\"text\":\"" + message.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}");
             Object packet = PACKET_PLAY_OUT_CHAT.invoke(component, CHAT_MESSAGE_TYPE);
-            sendPacket(player, packet);
+            ReflectionUtils.sendPacket(player, packet);
         } catch (Throwable throwable) {
             throwable.printStackTrace();
         }
