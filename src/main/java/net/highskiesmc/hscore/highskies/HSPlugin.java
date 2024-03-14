@@ -2,6 +2,7 @@ package net.highskiesmc.hscore.highskies;
 
 import net.highskiesmc.hscore.configuration.Config;
 import net.highskiesmc.hscore.inventory.InventoryHandler;
+import net.highskiesmc.hscore.recipes.CustomRecipe;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.event.Listener;
@@ -18,6 +19,10 @@ public abstract class HSPlugin extends JavaPlugin {
     public final void onEnable() {
         if (isUsingInventories()) {
             Bukkit.getPluginManager().registerEvents(new InventoryHandler(), this);
+        }
+
+        if (isAddingCustomRecipe()) {
+            Bukkit.getPluginManager().registerEvents(new CustomRecipe(this), this);
         }
 
         enable();
@@ -41,6 +46,8 @@ public abstract class HSPlugin extends JavaPlugin {
     public abstract void reload();
 
     protected abstract boolean isUsingInventories();
+
+    protected abstract boolean isAddingCustomRecipe();
 
     protected void register(Listener handler) {
         Bukkit.getPluginManager().registerEvents(handler, this);
